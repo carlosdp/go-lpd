@@ -32,6 +32,14 @@ type subCommand struct {
 	FileName string
 }
 
+func newPrintWaitingJobsCommand(queue string) *command {
+	cmd := new(command)
+	cmd.Code = PrintWaitingJobs
+	cmd.Queue = queue
+
+	return cmd
+}
+
 func marshalCommand(cmd *command) []byte {
 	output := []byte{cmd.Code}
 
