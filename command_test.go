@@ -1,6 +1,7 @@
 package lpd
 
 import (
+	"encoding/binary"
 	"testing"
 )
 
@@ -78,5 +79,49 @@ func TestUnmarshalCommand(t *testing.T) {
 
 	if cmd.Username != "User" {
 		t.Fatal("User not decoded correctly: ", cmd.Username)
+	}
+}
+
+func TestMashalSubCommand(t *testing.T) {
+	subCmd := &subCommand{
+		Code:     0x2,
+		NumBytes: 10,
+		FileName: "Test.file",
+	}
+
+	rawSubCommand := marshalSubCommand(subCmd)
+
+	if rawSubCommand[0] != 0x2 {
+		t.Fatal("Code not encoded correctly")
+	}
+
+	i := 1
+
+	bNumBytes := make([]byte, 8)
+
+	binary.LittleEndian.PutUint64(bNumBytes, 10)
+
+	for _, b := range bNumBytes {
+		if rawSubCommand[i] != b {
+			t.Fatal("Number of bytes not encoded correctly")
+		}
+
+		i++
+	}
+
+	if rawSubCommand[i] != 0x32 {
+		t.Fatal("Space not included after number of bytes")
+	}
+
+	i++
+
+	bFileName := []byte("Test.file")
+
+	for _, b := range bFileName {
+		if rawSubCommand[i] != b {
+			t.Fatal("File name not encoded correctly")
+		}
+
+		i++
 	}
 }

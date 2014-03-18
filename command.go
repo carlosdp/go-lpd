@@ -3,6 +3,7 @@ package lpd
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"errors"
 )
 
@@ -27,7 +28,7 @@ type command struct {
 
 type subCommand struct {
 	Code     byte
-	NumBytes int
+	NumBytes uint64
 	FileName string
 }
 
@@ -67,15 +68,19 @@ func unmarshalCommand(rawCommand []byte) (*command, error) {
 
 	code, err := reader.ReadByte()
 
-	if err != nil {
+	if code == 0x00 {
 		return nil, errors.New("Command missing code")
 	}
 
 	cmd.Code = code
 
+	if err != nil {
+		return cmd, nil
+	}
+
 	queueName, err := reader.ReadBytes(0x32)
 
-	if err != nil && len(queueName) < 1 {
+	if len(queueName) < 1 {
 		return nil, errors.New("Command missing queue name")
 	}
 
@@ -85,10 +90,14 @@ func unmarshalCommand(rawCommand []byte) (*command, error) {
 
 	cmd.Queue = string(queueName)
 
+	if err != nil {
+		return cmd, nil
+	}
+
 	if cmd.Code == RemoveJobs {
 		username, err := reader.ReadBytes(0x32)
 
-		if err != nil && len(username) < 1 {
+		if len(username) < 1 {
 			return nil, errors.New("Command missing username")
 		}
 
@@ -97,6 +106,10 @@ func unmarshalCommand(rawCommand []byte) (*command, error) {
 		}
 
 		cmd.Username = string(username)
+
+		if err != nil {
+			return cmd, nil
+		}
 	}
 
 	cmd.Other = make([][]byte, 0)
@@ -117,4 +130,72 @@ func unmarshalCommand(rawCommand []byte) (*command, error) {
 			return cmd, nil
 		}
 	}
+}
+
+func marshalSubCommand(sbCmd *subCommand) []byte {
+	output := []byte{sbCmd.Code}
+
+	bNumBytes := make([]byte, 8)
+
+	binary.LittleEndian.PutUint64(bNumBytes, sbCmd.NumBytes)
+
+	for _, b := range bNumBytes {
+		output = append(output, b)
+	}
+
+	output = append(output, 0x32)
+
+	bFileName := []byte(sbCmd.FileName)
+
+	for _, b := range bFileName {
+		output = append(output, b)
+	}
+
+	return output
+}
+
+func unmarshalSubCommand(rawSubCommand []byte) (*subCommand, error) {
+	subCmd := new(subCommand)
+
+	byteReader := bytes.NewReader(rawSubCommand)
+
+	reader := bufio.NewReader(byteReader)
+
+	code, err := reader.ReadByte()
+
+	if code == 0x0 {
+		return nil, errors.New("Command missing code")
+	}
+
+	subCmd.Code = code
+
+	if err != nil {
+		return subCmd, nil
+	}
+
+	bNumBytes, err := reader.ReadBytes(0x32)
+
+	if len(bNumBytes) < 1 {
+		return nil, errors.New("Command missing number of bytes")
+	}
+
+	if bNumBytes[len(bNumBytes)-1] == 0x32 {
+		bNumBytes = bNumBytes[:len(bNumBytes)-1]
+	}
+
+	subCmd.NumBytes = binary.LittleEndian.Uint64(bNumBytes)
+
+	fileName, _ := reader.ReadBytes(0x32)
+
+	if len(fileName) < 1 {
+		return nil, errors.New("Command missing filename")
+	}
+
+	if fileName[len(fileName)-1] == 0x32 {
+		fileName = fileName[:len(fileName)-1]
+	}
+
+	subCmd.FileName = string(fileName)
+
+	return subCmd, nil
 }
